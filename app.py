@@ -4,6 +4,10 @@ import io
 import base64
 from datetime import datetime
 
+# Initialize session state for history
+if "history" not in st.session_state:
+    st.session_state.history = []
+
 # Function to load prompt templates
 @st.cache_data
 def load_prompt_templates():
