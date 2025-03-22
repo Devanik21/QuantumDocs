@@ -8,6 +8,11 @@ from docx import Document
 st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📄")
 st.title("📄 QuantumDocs AI: Entangle with Your Documents")
 
+# Sidebar for API Key input
+with st.sidebar:
+    st.header("🔑 API Configuration")
+    api_key = st.text_input("Enter Gemini API Key:", type="password")
+
 # Function to extract text from PDF
 def extract_text_from_pdf(uploaded_file):
     reader = PyPDF2.PdfReader(uploaded_file)
@@ -18,7 +23,6 @@ def extract_text_from_pdf(uploaded_file):
 def extract_text_from_docx(uploaded_file):
     doc = Document(uploaded_file)
     return "\n".join([para.text for para in doc.paragraphs])
-
 
 # Function to extract text from TXT
 def extract_text_from_txt(uploaded_file):
@@ -44,13 +48,13 @@ query = st.text_input("Ask a question about the documents:")
 
 # Function to call Gemini API
 def query_gemini_rag(query, context, api_key):
+    if not api_key:
+        return "❌ API key is required."
+    
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")  # Updated model
     response = model.generate_content(f"Context: {context}\n\nQuestion: {query}")
     return response.text
-
-# API Key input
-api_key = st.text_input("Enter Gemini API Key:", type="password")
 
 # Generate response
 if query and corpus and api_key:
