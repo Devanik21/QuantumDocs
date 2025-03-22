@@ -1,52 +1,59 @@
 import streamlit as st
 import google.generativeai as genai
-import io
-import base64
-from datetime import datetime
+import os
+import PyPDF2
+import docx
 
-# Initialize session state for history
-if "history" not in st.session_state:
-    st.session_state.history = []
+# Initialize Streamlit app
+st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📄")
+st.title("📄 QuantumDocs AI: Entangle with Your Documents")
 
-# Function to load prompt templates
-@st.cache_data
-def load_prompt_templates():
-    templates = {
-        "document_chat": "Analyze the uploaded document and answer: {prompt}. Keep responses concise and relevant.",
-        "ai_generation": "Generate content using AI for: {prompt}. Ensure high-quality output."
-    }
-    return templates
+# Function to extract text from PDF
+def extract_text_from_pdf(uploaded_file):
+    reader = PyPDF2.PdfReader(uploaded_file)
+    text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    return text
 
-# Function to generate content with Gemini API
-def generate_ai_content(prompt, api_key, model_name):
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
-        with st.spinner("🔮 AI is working its magic..."):
-            generation_config = {"temperature": 0.7, "top_p": 0.95, "top_k": 40, "max_output_tokens": 32768}  # Increased output token limit
-            response = model.generate_content(prompt, generation_config=generation_config)
-            return response.text
-    except Exception as e:
-        return f"Error: {str(e)}"
+# Function to extract text from DOCX
+def extract_text_from_docx(uploaded_file):
+    doc = docx.Document(uploaded_file)
+    return "\n".join([para.text for para in doc.paragraphs])
 
-# Function to save content to history
-def save_to_history(tool_name, prompt, output):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.session_state.history.insert(0, {"timestamp": timestamp, "tool": tool_name, "prompt": prompt, "output": output})
-    if len(st.session_state.history) > 20:
-        st.session_state.history = st.session_state.history[:20]
+# Function to extract text from TXT
+def extract_text_from_txt(uploaded_file):
+    return uploaded_file.read().decode("utf-8")
 
-# Streamlit UI
-st.title("🌌 QuantumDocs AI: Entangle with Your Documents")
-st.write("Upload your documents and interact with them on a quantum level!")
+# File upload
+uploaded_files = st.file_uploader("Upload Documents (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"], accept_multiple_files=True)
 
-api_key = st.text_input("Enter Google Gemini API Key", type="password")
+# Extract and store text
+corpus = ""
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        if uploaded_file.type == "application/pdf":
+            corpus += extract_text_from_pdf(uploaded_file) + "\n\n"
+        elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            corpus += extract_text_from_docx(uploaded_file) + "\n\n"
+        elif uploaded_file.type == "text/plain":
+            corpus += extract_text_from_txt(uploaded_file) + "\n\n"
+    st.success("Documents processed successfully!")
 
-uploaded_files = st.file_uploader("Upload PDF/DOCX/TXT files", accept_multiple_files=True)
-user_query = st.text_input("Ask something about your documents")
+# User query
+query = st.text_input("Ask a question about the documents:")
 
-if api_key and uploaded_files and user_query:
-    st.write("Processing...")
-    response = generate_ai_content(user_query, api_key, "gemini-model")
-    st.write(response)
-    save_to_history("document_chat", user_query, response)
+# Function to call Gemini API
+def query_gemini_rag(query, context, api_key):
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-pro")
+    response = model.generate_content(f"Context: {context}\n\nQuestion: {query}")
+    return response.text
+
+# API Key input
+api_key = st.text_input("Enter Gemini API Key:", type="password")
+
+# Generate response
+if query and corpus and api_key:
+    with st.spinner("Analyzing documents..."):
+        response = query_gemini_rag(query, corpus, api_key)
+        st.subheader("💡 AI Response:")
+        st.write(response)
