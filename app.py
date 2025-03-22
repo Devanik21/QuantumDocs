@@ -45,7 +45,7 @@ query = st.text_input("Ask a question about the documents:")
 # Function to call Gemini API
 def query_gemini_rag(query, context, api_key):
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-pro")
+    model = genai.GenerativeModel("gemini-2.0-flash")
     response = model.generate_content(f"Context: {context}\n\nQuestion: {query}")
     return response.text
 
