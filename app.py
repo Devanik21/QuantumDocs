@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import PyPDF2
-import docx
+from docx import Document
 
 # Initialize Streamlit app
 st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📄")
@@ -16,8 +16,9 @@ def extract_text_from_pdf(uploaded_file):
 
 # Function to extract text from DOCX
 def extract_text_from_docx(uploaded_file):
-    doc = docx.Document(uploaded_file)
+    doc = Document(uploaded_file)
     return "\n".join([para.text for para in doc.paragraphs])
+
 
 # Function to extract text from TXT
 def extract_text_from_txt(uploaded_file):
