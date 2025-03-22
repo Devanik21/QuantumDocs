@@ -36,11 +36,13 @@ def save_to_history(tool_name, prompt, output):
 st.title("🌌 QuantumDocs AI: Entangle with Your Documents")
 st.write("Upload your documents and interact with them on a quantum level!")
 
+api_key = st.text_input("Enter Google Gemini API Key", type="password")
+
 uploaded_files = st.file_uploader("Upload PDF/DOCX/TXT files", accept_multiple_files=True)
 user_query = st.text_input("Ask something about your documents")
 
-if uploaded_files and user_query:
+if api_key and uploaded_files and user_query:
     st.write("Processing...")
-    response = generate_ai_content(user_query, "your-gemini-api-key", "gemini-model")
+    response = generate_ai_content(user_query, api_key, "gemini-model")
     st.write(response)
     save_to_history("document_chat", user_query, response)
