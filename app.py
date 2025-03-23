@@ -29,11 +29,11 @@ with st.sidebar:
     st.header("⚙️ Advanced Options")
     
     # Feature 1: Model Selection
-       st.session_state.api_model = st.selectbox(
-        "Select AI Model:",
-        ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro","gemini-2.0-flash-lite","gemini-2.0-pro-exp-02-05",
-"gemini-2.0-flash-thinking-exp-01-21","gemini-1.5-flash-8b"],
-        index=0
+    # Feature 1: Model Selection
+    model_option = st.selectbox(
+        "Model Selection:", 
+        ["gemini-2.0-flash","gemini-2.0-flash-lite","gemini-2.0-pro-exp-02-05",
+"gemini-2.0-flash-thinking-exp-01-21","gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
     )
     
     # Feature 2: Response Length Control
