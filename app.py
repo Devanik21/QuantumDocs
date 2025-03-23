@@ -10,42 +10,49 @@ import pandas as pd
 st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📄")
 st.title("📄 QuantumDocs AI: Entangle with Your Documents")
 
-# Sidebar for API Key and Name input
+# Sidebar for API Key input
 with st.sidebar:
     st.header("🔑 API Configuration")
     api_key = st.text_input("Enter Gemini API Key:", type="password")
-    user_name = st.text_input("Enter your name:", key="user_name")
 
-# Increase upload limit (1GB)
+# Increase file upload limit (1GB)
 st.session_state["max_upload_size"] = 1 * 1024 * 1024 * 1024  # 1GB
 
-# Initialize chat memory in session state
-if "chat_history" not in st.session_state:
-    st.session_state["chat_history"] = []
-if "user_name" not in st.session_state:
-    st.session_state["user_name"] = user_name or "User"
-
-# Function to extract text from different document types
+# Function to extract text from large PDF in chunks
 def extract_text_from_pdf(uploaded_file):
     reader = PyPDF2.PdfReader(uploaded_file)
-    return [page.extract_text() for page in reader.pages if page.extract_text()]
+    text_chunks = []
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            text_chunks.append(text)
+    return text_chunks  # Return as a list of chunks
 
+# Function to extract text from DOCX
 def extract_text_from_docx(uploaded_file):
     doc = Document(uploaded_file)
-    return [para.text for para in doc.paragraphs if para.text]
+    text_chunks = [para.text for para in doc.paragraphs if para.text]
+    return text_chunks  # Return as a list of chunks
 
+# Function to extract text from TXT
 def extract_text_from_txt(uploaded_file):
-    return uploaded_file.read().decode("utf-8").split("\n\n")
+    text = uploaded_file.read().decode("utf-8")
+    return text.split("\n\n")  # Split into paragraphs for better chunking
 
+# Function to extract text from CSV
 def extract_text_from_csv(uploaded_file):
     df = pd.read_csv(uploaded_file)
     return df.astype(str).apply(lambda x: " ".join(x), axis=1).tolist()
 
+# Function to extract text from JSON
 def extract_text_from_json(uploaded_file):
-    return [json.dumps(json.load(uploaded_file), indent=2)]
+    data = json.load(uploaded_file)
+    return [json.dumps(data, indent=2)]  # Convert JSON to a string
 
+# Function to extract text from Markdown
 def extract_text_from_md(uploaded_file):
-    return uploaded_file.read().decode("utf-8").split("\n\n")
+    text = uploaded_file.read().decode("utf-8")
+    return text.split("\n\n")  # Split into paragraphs
 
 # File upload
 uploaded_files = st.file_uploader(
@@ -75,7 +82,10 @@ if uploaded_files:
 
     st.success(f"✅ {len(corpus_chunks)} document sections processed successfully!")
 
-# Function to query Gemini API with chat memory
+# User query
+query = st.text_input("Ask a question about the documents:")
+
+# Function to call Gemini API with chunked context
 def query_gemini_rag(query, context_chunks, api_key):
     if not api_key:
         return "❌ API key is required."
@@ -83,35 +93,22 @@ def query_gemini_rag(query, context_chunks, api_key):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    # Build prompt dynamically to ensure context retention
-    chat_history_text = "\n".join(st.session_state["chat_history"][-5:])  # Last 5 messages for context
-    prompt = f"User: {st.session_state['user_name']}\nChat History:\n{chat_history_text}\n\n"
+    # Build prompt dynamically to ensure long, detailed responses
+    prompt = f"Provide a detailed, structured, and long-form response (3000+ words) based on the following document excerpts:\n\n"
+    for chunk in context_chunks[:10]:  # Process first 10 chunks to avoid exceeding token limits
+        prompt += f"- {chunk[:2000]}\n\n"  # Limit each chunk to 2000 characters
 
-    # Include document excerpts
-    for chunk in context_chunks[:10]:  # Process first 10 chunks
-        prompt += f"- {chunk[:2000]}\n\n"
-
-    prompt += f"\n\nNow, respond to the latest question:\n{query}"
+    prompt += f"\n\nNow, answer the user's question comprehensively:\n{query}"
 
     response = model.generate_content(
         prompt,
-        generation_config={"temperature": 0.7, "top_p": 0.9, "max_output_tokens": 8192}
+        generation_config={"temperature": 0.7, "top_p": 0.9, "max_output_tokens": 8192}  # Max output for long responses
     )
-
     return response.text
 
-# Chat Interface
-st.subheader("💬 Chat with Your Documents")
-query = st.text_input("Ask something:")
-
-if query and api_key:
-    with st.spinner("🔍 Thinking..."):
+# Generate response
+if query and corpus_chunks and api_key:
+    with st.spinner("🔍 Analyzing documents and generating a detailed response..."):
         response = query_gemini_rag(query, corpus_chunks, api_key)
-        
-        # Store chat history
-        st.session_state["chat_history"].append(f"User: {query}")
-        st.session_state["chat_history"].append(f"AI: {response}")
-
-        # Display chat history
-        for message in st.session_state["chat_history"][-10:]:  # Show last 10 messages
-            st.write(message)
+        st.subheader("💡 AI Response:")
+        st.write(response)
