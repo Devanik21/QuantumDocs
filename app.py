@@ -228,7 +228,7 @@ def query_gemini_rag(query, context_chunks, api_key, model, temp, top_p_val, max
 # Generate response
 if query and corpus_chunks and api_key:
     with st.spinner("🔍 Analyzing documents and generating a detailed response..."):
-        max_tokens = max(1000, int(response_length * 4))  # Approximate tokens from words
+        max_tokens = 8192  # Fixed maximum output length
         response = query_gemini_rag(
             query, 
             corpus_chunks, 
