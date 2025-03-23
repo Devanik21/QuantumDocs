@@ -70,22 +70,13 @@ def extract_text_from_epub(uploaded_file):
     book = epub.read_epub(uploaded_file)
     return [BeautifulSoup(item.content, "html.parser").get_text() for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT]
 
-# Function to extract text from ZIP
-def extract_text_from_zip(uploaded_file):
-    text_chunks = []
-    with zipfile.ZipFile(uploaded_file, 'r') as z:
-        for file_name in z.namelist():
-            with z.open(file_name) as file:
-                ext = file_name.split('.')[-1].lower()
-                if ext in ["txt", "csv", "json", "md", "docx", "pdf"]:
-                    extract_func = globals()[f"extract_text_from_{ext}"]
-                    text_chunks.extend(extract_func(io.BytesIO(file.read())))
-    return text_chunks
+
+
 
 # File upload
 uploaded_files = st.file_uploader(
-    "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD, PPTX, XLSX, HTML, EPUB, ZIP)", 
-    type=["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub", "zip"], 
+    "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD, PPTX, XLSX, HTML, EPUB)", 
+    type=["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub"], 
     accept_multiple_files=True
 )
 
@@ -94,7 +85,7 @@ corpus_chunks = []
 if uploaded_files:
     for uploaded_file in uploaded_files:
         file_ext = uploaded_file.name.split(".")[-1].lower()
-        if file_ext in ["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub", "zip"]:
+        if file_ext in ["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub"]:
             extract_func = globals()[f"extract_text_from_{file_ext}"]
             corpus_chunks.extend(extract_func(uploaded_file))
     st.success(f"✅ {len(corpus_chunks)} document sections processed successfully!")
