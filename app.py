@@ -106,18 +106,29 @@ def extract_text_from_xlsx(uploaded_file):
 def extract_text_from_html(uploaded_file):
     return [BeautifulSoup(uploaded_file.read(), "html.parser").get_text()]
 
+import ebooklib
+from ebooklib import epub
+from bs4 import BeautifulSoup
+import io
+import tempfile
+
 def extract_text_from_epub(uploaded_file):
-    # Read the uploaded file into memory as bytes
-    with io.BytesIO(uploaded_file.getvalue()) as file:
-        book = epub.read_epub(file)
-    
+    # Create a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as temp_file:
+        temp_file.write(uploaded_file.getvalue())  # Write uploaded file data to temp file
+        temp_file_path = temp_file.name  # Get file path
+
+    # Read the EPUB file from the temporary file
+    book = epub.read_epub(temp_file_path)
+
     # Extract text from the EPUB file
     text_content = [
         BeautifulSoup(item.content, "html.parser").get_text()
         for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
     ]
-    
+
     return text_content
+
 # File upload
 uploaded_files = st.file_uploader(
     "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD, PPTX, XLSX, HTML, EPUB)", 
