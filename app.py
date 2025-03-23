@@ -107,9 +107,17 @@ def extract_text_from_html(uploaded_file):
     return [BeautifulSoup(uploaded_file.read(), "html.parser").get_text()]
 
 def extract_text_from_epub(uploaded_file):
-    book = epub.read_epub(uploaded_file)
-    return [BeautifulSoup(item.content, "html.parser").get_text() for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT]
-
+    # Read the uploaded file into memory as bytes
+    with io.BytesIO(uploaded_file.getvalue()) as file:
+        book = epub.read_epub(file)
+    
+    # Extract text from the EPUB file
+    text_content = [
+        BeautifulSoup(item.content, "html.parser").get_text()
+        for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
+    ]
+    
+    return text_content
 # File upload
 uploaded_files = st.file_uploader(
     "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD, PPTX, XLSX, HTML, EPUB)", 
