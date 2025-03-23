@@ -54,12 +54,69 @@ def extract_text_from_md(uploaded_file):
     text = uploaded_file.read().decode("utf-8")
     return text.split("\n\n")  # Split into paragraphs
 
+from pptx import Presentation
+
+def extract_text_from_pptx(uploaded_file):
+    presentation = Presentation(uploaded_file)
+    text_chunks = []
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text:
+                text_chunks.append(shape.text)
+    return text_chunks
+
+def extract_text_from_xlsx(uploaded_file):
+    df = pd.read_excel(uploaded_file)
+    return df.astype(str).apply(lambda x: " ".join(x), axis=1).tolist()
+
+from bs4 import BeautifulSoup
+
+def extract_text_from_html(uploaded_file):
+    soup = BeautifulSoup(uploaded_file.read(), "html.parser")
+    return [soup.get_text()]
+
+import ebooklib
+from ebooklib import epub
+
+def extract_text_from_epub(uploaded_file):
+    book = epub.read_epub(uploaded_file)
+    text_chunks = []
+    for item in book.get_items():
+        if item.get_type() == ebooklib.ITEM_DOCUMENT:
+            soup = BeautifulSoup(item.content, "html.parser")
+            text_chunks.append(soup.get_text())
+    return text_chunks
+
+import zipfile
+import io
+
+def extract_text_from_zip(uploaded_file):
+    text_chunks = []
+    with zipfile.ZipFile(uploaded_file, 'r') as z:
+        for file_name in z.namelist():
+            with z.open(file_name) as file:
+                ext = file_name.split('.')[-1].lower()
+                if ext == "txt":
+                    text_chunks.extend(extract_text_from_txt(io.BytesIO(file.read())))
+                elif ext == "csv":
+                    text_chunks.extend(extract_text_from_csv(io.BytesIO(file.read())))
+                elif ext == "json":
+                    text_chunks.extend(extract_text_from_json(io.BytesIO(file.read())))
+                elif ext == "md":
+                    text_chunks.extend(extract_text_from_md(io.BytesIO(file.read())))
+                elif ext == "docx":
+                    text_chunks.extend(extract_text_from_docx(io.BytesIO(file.read())))
+                elif ext == "pdf":
+                    text_chunks.extend(extract_text_from_pdf(io.BytesIO(file.read())))
+    return text_chunks
+
 # File upload
 uploaded_files = st.file_uploader(
-    "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD)", 
-    type=["pdf", "docx", "txt", "csv", "json", "md"], 
+    "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD, PPTX, XLSX, HTML, EPUB, ZIP)", 
+    type=["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub", "zip"], 
     accept_multiple_files=True
 )
+
 
 # Extract and store text
 corpus_chunks = []
