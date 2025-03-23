@@ -11,67 +11,104 @@ import ebooklib
 from ebooklib import epub
 import zipfile
 import io
+import time
+import matplotlib.pyplot as plt
+import seaborn as sns
+import base64
+from io import BytesIO
 
 # Initialize Streamlit app
-st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📝")
+st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📝", layout="wide")
 st.title("📝 QuantumDocs AI: Entangle with Your Documents")
 
-# Sidebar for API Key input
+# Sidebar for API Key and advanced options
 with st.sidebar:
     st.header("🔑 API Configuration")
     api_key = st.text_input("Enter Gemini API Key:", type="password")
+    
+    st.header("⚙️ Advanced Options")
+    
+    # Feature 1: Model Selection
+    model_option = st.selectbox(
+        "Model Selection:", 
+        ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
+    )
+    
+    # Feature 2: Response Length Control
+    response_length = st.slider("Response Length (words):", 500, 10000, 3000)
+    
+    # Feature 3: Temperature Control
+    temperature = st.slider("Temperature:", 0.0, 1.0, 0.7, 0.1)
+    
+    # Feature 4: Top-p Sampling
+    top_p = st.slider("Top-p Sampling:", 0.1, 1.0, 0.9, 0.1)
+    
+    # Feature 5: Save Responses
+    save_responses = st.checkbox("Save Responses to File", False)
+    
+    # Feature 6: Context Window Size
+    context_chunks_limit = st.slider("Context Window Size:", 1, 20, 10)
+    
+    # Feature 7: Document Analysis Mode
+    analysis_mode = st.radio(
+        "Document Analysis Mode:",
+        ["Q&A", "Summary", "Key Points", "Comparison"]
+    )
+    
+    # Feature 8: Processing Method
+    processing_method = st.radio(
+        "Processing Method:",
+        ["Process All Files", "Process Selected Files"]
+    )
+    
+    # Feature 9: Language Selection
+    language = st.selectbox(
+        "Response Language:",
+        ["English", "Spanish", "French", "German", "Chinese", "Japanese"]
+    )
+    
+    # Feature 10: Document Visualization
+    enable_visualization = st.checkbox("Enable Document Visualization", False)
 
 # Increase file upload limit (1GB)
 st.session_state["max_upload_size"] = 1 * 1024 * 1024 * 1024  # 1GB
 
-# Function to extract text from PDF
+# Text extraction functions
 def extract_text_from_pdf(uploaded_file):
     reader = PyPDF2.PdfReader(uploaded_file)
     return [page.extract_text() for page in reader.pages if page.extract_text()]
 
-# Function to extract text from DOCX
 def extract_text_from_docx(uploaded_file):
     doc = Document(uploaded_file)
     return [para.text for para in doc.paragraphs if para.text]
 
-# Function to extract text from TXT
 def extract_text_from_txt(uploaded_file):
     return uploaded_file.read().decode("utf-8").split("\n\n")
 
-# Function to extract text from CSV
 def extract_text_from_csv(uploaded_file):
     df = pd.read_csv(uploaded_file)
     return df.astype(str).apply(lambda x: " ".join(x), axis=1).tolist()
 
-# Function to extract text from JSON
 def extract_text_from_json(uploaded_file):
     return [json.dumps(json.load(uploaded_file), indent=2)]
 
-# Function to extract text from Markdown
 def extract_text_from_md(uploaded_file):
     return uploaded_file.read().decode("utf-8").split("\n\n")
 
-# Function to extract text from PowerPoint (PPTX)
 def extract_text_from_pptx(uploaded_file):
     presentation = Presentation(uploaded_file)
     return [shape.text for slide in presentation.slides for shape in slide.shapes if hasattr(shape, "text") and shape.text]
 
-# Function to extract text from Excel (XLSX)
 def extract_text_from_xlsx(uploaded_file):
     df = pd.read_excel(uploaded_file)
     return df.astype(str).apply(lambda x: " ".join(x), axis=1).tolist()
 
-# Function to extract text from HTML
 def extract_text_from_html(uploaded_file):
     return [BeautifulSoup(uploaded_file.read(), "html.parser").get_text()]
 
-# Function to extract text from EPUB
 def extract_text_from_epub(uploaded_file):
     book = epub.read_epub(uploaded_file)
     return [BeautifulSoup(item.content, "html.parser").get_text() for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT]
-
-
-
 
 # File upload
 uploaded_files = st.file_uploader(
@@ -80,38 +117,139 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
+# For Feature 8: Process Selected Files
+if uploaded_files and processing_method == "Process Selected Files":
+    file_names = [file.name for file in uploaded_files]
+    selected_files = st.multiselect("Select files to process:", file_names, default=file_names)
+    uploaded_files = [file for file in uploaded_files if file.name in selected_files]
+
 # Extract and store text
 corpus_chunks = []
+file_stats = {}
 if uploaded_files:
-    for uploaded_file in uploaded_files:
+    progress_bar = st.progress(0)
+    for i, uploaded_file in enumerate(uploaded_files):
         file_ext = uploaded_file.name.split(".")[-1].lower()
         if file_ext in ["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub"]:
+            start_time = time.time()
             extract_func = globals()[f"extract_text_from_{file_ext}"]
-            corpus_chunks.extend(extract_func(uploaded_file))
+            extracted_chunks = extract_func(uploaded_file)
+            corpus_chunks.extend(extracted_chunks)
+            
+            # Collect stats for visualization
+            file_stats[uploaded_file.name] = {
+                "size": uploaded_file.size,
+                "chunks": len(extracted_chunks),
+                "processing_time": time.time() - start_time
+            }
+        
+        progress_bar.progress((i + 1) / len(uploaded_files))
+    
     st.success(f"✅ {len(corpus_chunks)} document sections processed successfully!")
 
-# User query
-query = st.text_input("Ask a question about the documents:")
+# Feature 10: Document Visualization
+if enable_visualization and file_stats:
+    st.subheader("📊 Document Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # File size chart
+        fig, ax = plt.subplots(figsize=(5, 3))
+        sizes = [stats["size"]/1024 for stats in file_stats.values()]
+        sns.barplot(x=list(file_stats.keys()), y=sizes, ax=ax)
+        plt.xticks(rotation=45, ha="right")
+        plt.ylabel("Size (KB)")
+        plt.title("Document Sizes")
+        plt.tight_layout()
+        st.pyplot(fig)
+    
+    with col2:
+        # Chunks per document
+        fig, ax = plt.subplots(figsize=(5, 3))
+        chunks = [stats["chunks"] for stats in file_stats.values()]
+        sns.barplot(x=list(file_stats.keys()), y=chunks, ax=ax)
+        plt.xticks(rotation=45, ha="right")
+        plt.ylabel("Chunks")
+        plt.title("Document Sections")
+        plt.tight_layout()
+        st.pyplot(fig)
+
+# User query or analysis mode prompt
+if analysis_mode == "Q&A":
+    query = st.text_input("Ask a question about the documents:")
+elif analysis_mode == "Summary":
+    query = "Generate a comprehensive summary of these documents."
+elif analysis_mode == "Key Points":
+    query = "Extract and organize the key points from these documents."
+elif analysis_mode == "Comparison":
+    query = "Compare and contrast the main ideas and information across these documents."
 
 # Function to call Gemini API
-def query_gemini_rag(query, context_chunks, api_key):
+def query_gemini_rag(query, context_chunks, api_key, model, temp, top_p_val, max_tokens, lang, mode):
     if not api_key:
         return "❌ API key is required."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model_instance = genai.GenerativeModel(model)
     
-    prompt = "Provide a detailed, structured, and long-form response (3000+ words) based on the following document excerpts:\n\n"
-    for chunk in context_chunks[:10]:
+    # Different prompts based on analysis mode
+    mode_prompts = {
+        "Q&A": f"Answer the following question based on the documents: {query}",
+        "Summary": "Generate a detailed and structured summary of these documents.",
+        "Key Points": "Extract and organize the key points from these documents.",
+        "Comparison": "Compare and contrast the main ideas across these documents."
+    }
+    
+    prompt = f"Provide a detailed response in {lang} based on the following document excerpts:\n\n"
+    for chunk in context_chunks[:context_chunks_limit]:
         prompt += f"- {chunk[:2000]}\n\n"
-    prompt += f"\n\nNow, answer the user's question comprehensively:\n{query}"
+    prompt += f"\n\n{mode_prompts[mode]}"
     
-    response = model.generate_content(prompt, generation_config={"temperature": 0.7, "top_p": 0.9, "max_output_tokens": 8192})
+    response = model_instance.generate_content(
+        prompt, 
+        generation_config={
+            "temperature": temp,
+            "top_p": top_p_val,
+            "max_output_tokens": max_tokens
+        }
+    )
+    
+    # Save response if option enabled
+    if save_responses:
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        with open(f"response_{timestamp}.txt", "w") as f:
+            f.write(response.text)
+    
     return response.text
 
 # Generate response
 if query and corpus_chunks and api_key:
     with st.spinner("🔍 Analyzing documents and generating a detailed response..."):
-        response = query_gemini_rag(query, corpus_chunks, api_key)
+        max_tokens = max(1000, int(response_length * 4))  # Approximate tokens from words
+        response = query_gemini_rag(
+            query, 
+            corpus_chunks, 
+            api_key, 
+            model_option,
+            temperature, 
+            top_p, 
+            max_tokens,
+            language,
+            analysis_mode
+        )
+        
+        # Create downloadable response
+        response_download = BytesIO()
+        response_download.write(response.encode())
+        response_download.seek(0)
+        
         st.subheader("💡 AI Response:")
         st.write(response)
+        
+        st.download_button(
+            label="Download Response",
+            data=response_download,
+            file_name=f"quantum_docs_response_{time.strftime('%Y%m%d-%H%M%S')}.txt",
+            mime="text/plain"
+        )
