@@ -35,9 +35,7 @@ with st.sidebar:
         ["gemini-2.0-flash","gemini-2.0-flash-lite","gemini-2.0-pro-exp-02-05",
 "gemini-2.0-flash-thinking-exp-01-21","gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"]
     )
-    
-    # Feature 2: Response Length Control
-    response_length = st.slider("Response Length (words):", 500, 10000, 3000)
+
     
     # Feature 3: Temperature Control
     temperature = st.slider("Temperature:", 0.0, 1.0, 0.7, 0.1)
