@@ -5,270 +5,199 @@ import PyPDF2
 from docx import Document
 import json
 import pandas as pd
-from pptx import Presentation
-from bs4 import BeautifulSoup
-import ebooklib
-from ebooklib import epub
-import zipfile
-import io
-import time
-import matplotlib.pyplot as plt
-import seaborn as sns
-import base64
 from io import BytesIO
+import time
+import base64
 
 # Initialize Streamlit app
-st.set_page_config(page_title="QuantumDocs AI: Entangle with Your Documents", page_icon="📝", layout="wide")
-st.title("📝 QuantumDocs AI: Entangle with Your Documents")
+st.set_page_config(page_title="Claude-Like Chat Interface", page_icon="🤖", layout="wide")
 
-# Sidebar for API Key and advanced options
+# Initialize session state for chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = []
+    
+if "file_contents" not in st.session_state:
+    st.session_state.file_contents = {}
+
+# Sidebar for API Key and settings
 with st.sidebar:
     st.header("🔑 API Configuration")
-    api_key = st.text_input("Enter Gemini API Key:", type="password")
+    api_key = st.text_input("Enter API Key:", type="password")
     
-    st.header("⚙️ Advanced Options")
-    
-    # Feature 1: Model Selection
-    # Feature 1: Model Selection
+    st.header("⚙️ Model Settings")
     model_option = st.selectbox(
         "Model Selection:", 
-        ["gemini-2.0-flash","gemini-2.0-flash-lite","gemini-2.0-pro-exp-02-05",
-"gemini-2.0-flash-thinking-exp-01-21","gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"]
+        ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
     )
-
     
-    # Feature 3: Temperature Control
     temperature = st.slider("Temperature:", 0.0, 1.0, 0.7, 0.1)
     
-    # Feature 4: Top-p Sampling
-    top_p = st.slider("Top-p Sampling:", 0.1, 1.0, 0.9, 0.1)
-    
-    # Feature 5: Save Responses
-    save_responses = st.checkbox("Save Responses to File", False)
-    
-    # Feature 6: Context Window Size
-    context_chunks_limit = st.slider("Context Window Size:", 1, 20, 10)
-    
-    # Feature 7: Document Analysis Mode
-    analysis_mode = st.radio(
-        "Document Analysis Mode:",
-        ["Q&A", "Summary", "Key Points", "Comparison"]
+    # File upload section in sidebar
+    st.header("📂 Upload Files")
+    uploaded_files = st.file_uploader(
+        "Upload files (PDF, DOCX, TXT, CSV, JSON, Images)", 
+        type=["pdf", "docx", "txt", "csv", "json", "jpg", "jpeg", "png"], 
+        accept_multiple_files=True
     )
     
-    # Feature 8: Processing Method
-    processing_method = st.radio(
-        "Processing Method:",
-        ["Process All Files", "Process Selected Files"]
-    )
+    # Add files button
+    if uploaded_files:
+        if st.button("➕ Add Files to Chat"):
+            # Process and add files to session state
+            for uploaded_file in uploaded_files:
+                if uploaded_file.name not in [f["name"] for f in st.session_state.uploaded_files]:
+                    file_type = uploaded_file.name.split('.')[-1].lower()
+                    
+                    # Extract text from documents
+                    if file_type == 'pdf':
+                        text_content = extract_text_from_pdf(uploaded_file)
+                    elif file_type == 'docx':
+                        text_content = extract_text_from_docx(uploaded_file)
+                    elif file_type == 'txt':
+                        text_content = uploaded_file.getvalue().decode('utf-8')
+                    elif file_type == 'csv':
+                        text_content = f"CSV file with {len(pd.read_csv(uploaded_file))} rows"
+                    elif file_type == 'json':
+                        text_content = json.loads(uploaded_file.getvalue())
+                    elif file_type in ['jpg', 'jpeg', 'png']:
+                        # For images, store the binary data
+                        text_content = "Image file"
+                        
+                    # Store file info and content
+                    st.session_state.uploaded_files.append({
+                        "name": uploaded_file.name,
+                        "type": file_type,
+                        "size": uploaded_file.size
+                    })
+                    
+                    st.session_state.file_contents[uploaded_file.name] = {
+                        "content": uploaded_file.getvalue(),
+                        "extracted_text": text_content
+                    }
+                    
+            # Add system message about files
+            file_names = [f["name"] for f in st.session_state.uploaded_files]
+            st.session_state.messages.append({
+                "role": "system",
+                "content": f"Files added to chat: {', '.join(file_names)}"
+            })
+            st.rerun()
     
-    # Feature 9: Language Selection
-    language = st.selectbox(
-        "Response Language:",
-        ["English", "Spanish", "French", "German", "Chinese", "Japanese"]
-    )
-    
-    # Feature 10: Document Visualization
-    enable_visualization = st.checkbox("Enable Document Visualization", False)
+    # Display current files in chat
+    if st.session_state.uploaded_files:
+        st.header("Current Files in Chat")
+        for idx, file in enumerate(st.session_state.uploaded_files):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"{file['name']} ({file['size']/1024:.1f} KB)")
+            with col2:
+                if st.button("❌", key=f"remove_{idx}"):
+                    # Remove file from session
+                    del st.session_state.file_contents[file['name']]
+                    st.session_state.uploaded_files.pop(idx)
+                    st.rerun()
 
-# Increase file upload limit (1GB)
-st.session_state["max_upload_size"] = 1 * 1024 * 1024 * 1024  # 1GB
+    # Clear chat button
+    if st.session_state.messages:
+        if st.button("🗑️ Clear Chat"):
+            st.session_state.messages = []
+            st.rerun()
 
 # Text extraction functions
 def extract_text_from_pdf(uploaded_file):
     reader = PyPDF2.PdfReader(uploaded_file)
-    return [page.extract_text() for page in reader.pages if page.extract_text()]
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() + "\n\n"
+    return text
 
 def extract_text_from_docx(uploaded_file):
     doc = Document(uploaded_file)
-    return [para.text for para in doc.paragraphs if para.text]
+    text = ""
+    for para in doc.paragraphs:
+        text += para.text + "\n\n"
+    return text
 
-def extract_text_from_txt(uploaded_file):
-    return uploaded_file.read().decode("utf-8").split("\n\n")
+# Function to encode image to base64
+def get_image_base64(image_bytes):
+    return base64.b64encode(image_bytes).decode('utf-8')
 
-def extract_text_from_csv(uploaded_file):
-    df = pd.read_csv(uploaded_file)
-    return df.astype(str).apply(lambda x: " ".join(x), axis=1).tolist()
+# Main chat interface
+st.title("🤖 Claude-Like Chat Interface")
 
-def extract_text_from_json(uploaded_file):
-    return [json.dumps(json.load(uploaded_file), indent=2)]
+# Display chat messages
+for message in st.session_state.messages:
+    if message["role"] == "system":
+        st.info(message["content"])
+    elif message["role"] == "user":
+        st.chat_message("user").write(message["content"])
+    else:
+        st.chat_message("assistant").write(message["content"])
 
-def extract_text_from_md(uploaded_file):
-    return uploaded_file.read().decode("utf-8").split("\n\n")
-
-def extract_text_from_pptx(uploaded_file):
-    presentation = Presentation(uploaded_file)
-    return [shape.text for slide in presentation.slides for shape in slide.shapes if hasattr(shape, "text") and shape.text]
-
-def extract_text_from_xlsx(uploaded_file):
-    df = pd.read_excel(uploaded_file)
-    return df.astype(str).apply(lambda x: " ".join(x), axis=1).tolist()
-
-def extract_text_from_html(uploaded_file):
-    return [BeautifulSoup(uploaded_file.read(), "html.parser").get_text()]
-
-import ebooklib
-from ebooklib import epub
-from bs4 import BeautifulSoup
-import io
-import tempfile
-
-def extract_text_from_epub(uploaded_file):
-    # Create a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as temp_file:
-        temp_file.write(uploaded_file.getvalue())  # Write uploaded file data to temp file
-        temp_file_path = temp_file.name  # Get file path
-
-    # Read the EPUB file from the temporary file
-    book = epub.read_epub(temp_file_path)
-
-    # Extract text from the EPUB file
-    text_content = [
-        BeautifulSoup(item.content, "html.parser").get_text()
-        for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT
-    ]
-
-    return text_content
-
-# File upload
-uploaded_files = st.file_uploader(
-    "Upload Documents (PDF, DOCX, TXT, CSV, JSON, MD, PPTX, XLSX, HTML, EPUB)", 
-    type=["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub"], 
-    accept_multiple_files=True
-)
-
-# For Feature 8: Process Selected Files
-if uploaded_files and processing_method == "Process Selected Files":
-    file_names = [file.name for file in uploaded_files]
-    selected_files = st.multiselect("Select files to process:", file_names, default=file_names)
-    uploaded_files = [file for file in uploaded_files if file.name in selected_files]
-
-# Extract and store text
-corpus_chunks = []
-file_stats = {}
-if uploaded_files:
-    progress_bar = st.progress(0)
-    for i, uploaded_file in enumerate(uploaded_files):
-        file_ext = uploaded_file.name.split(".")[-1].lower()
-        if file_ext in ["pdf", "docx", "txt", "csv", "json", "md", "pptx", "xlsx", "html", "epub"]:
-            start_time = time.time()
-            extract_func = globals()[f"extract_text_from_{file_ext}"]
-            extracted_chunks = extract_func(uploaded_file)
-            corpus_chunks.extend(extracted_chunks)
-            
-            # Collect stats for visualization
-            file_stats[uploaded_file.name] = {
-                "size": uploaded_file.size,
-                "chunks": len(extracted_chunks),
-                "processing_time": time.time() - start_time
-            }
-        
-        progress_bar.progress((i + 1) / len(uploaded_files))
-    
-    st.success(f"✅ {len(corpus_chunks)} document sections processed successfully!")
-
-# Feature 10: Document Visualization
-if enable_visualization and file_stats:
-    st.subheader("📊 Document Analysis")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # File size chart
-        fig, ax = plt.subplots(figsize=(5, 3))
-        sizes = [stats["size"]/1024 for stats in file_stats.values()]
-        sns.barplot(x=list(file_stats.keys()), y=sizes, ax=ax)
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("Size (KB)")
-        plt.title("Document Sizes")
-        plt.tight_layout()
-        st.pyplot(fig)
-    
-    with col2:
-        # Chunks per document
-        fig, ax = plt.subplots(figsize=(5, 3))
-        chunks = [stats["chunks"] for stats in file_stats.values()]
-        sns.barplot(x=list(file_stats.keys()), y=chunks, ax=ax)
-        plt.xticks(rotation=45, ha="right")
-        plt.ylabel("Chunks")
-        plt.title("Document Sections")
-        plt.tight_layout()
-        st.pyplot(fig)
-
-# User query or analysis mode prompt
-if analysis_mode == "Q&A":
-    query = st.text_input("Ask a question about the documents:")
-elif analysis_mode == "Summary":
-    query = "Generate a comprehensive summary of these documents."
-elif analysis_mode == "Key Points":
-    query = "Extract and organize the key points from these documents."
-elif analysis_mode == "Comparison":
-    query = "Compare and contrast the main ideas and information across these documents."
-
-# Function to call Gemini API
-def query_gemini_rag(query, context_chunks, api_key, model, temp, top_p_val, max_tokens, lang, mode):
+# Generate response function
+def generate_response(prompt, api_key, model, temp):
+    # Configure the API
     if not api_key:
         return "❌ API key is required."
     
     genai.configure(api_key=api_key)
     model_instance = genai.GenerativeModel(model)
     
-    # Different prompts based on analysis mode
-    mode_prompts = {
-        "Q&A": f"Answer the following question based on the documents: {query}",
-        "Summary": "Generate a detailed and structured summary of these documents.",
-        "Key Points": "Extract and organize the key points from these documents.",
-        "Comparison": "Compare and contrast the main ideas across these documents."
-    }
+    # Get context from uploaded files
+    context = ""
+    if st.session_state.uploaded_files:
+        context += "Here's information from the uploaded files:\n\n"
+        for file in st.session_state.uploaded_files:
+            file_content = st.session_state.file_contents[file["name"]]
+            if isinstance(file_content["extracted_text"], str):
+                # Truncate long text to avoid context window issues
+                context += f"From {file['name']}:\n{file_content['extracted_text'][:2000]}...\n\n"
     
-    prompt = f"Provide a detailed response in {lang} based on the following document excerpts:\n\n"
-    for chunk in context_chunks[:context_chunks_limit]:
-        prompt += f"- {chunk[:2000]}\n\n"
-    prompt += f"\n\n{mode_prompts[mode]}"
+    # Get conversation history
+    history = ""
+    for msg in st.session_state.messages:
+        if msg["role"] != "system":
+            history += f"{msg['role'].capitalize()}: {msg['content']}\n\n"
     
-    response = model_instance.generate_content(
-        prompt, 
-        generation_config={
-            "temperature": temp,
-            "top_p": top_p_val,
-            "max_output_tokens": max_tokens
-        }
-    )
+    # Create the full prompt with context and history
+    full_prompt = f"{context}\n\nConversation history:\n{history}\n\nUser: {prompt}\n\nAssistant:"
     
-    # Save response if option enabled
-    if save_responses:
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        with open(f"response_{timestamp}.txt", "w") as f:
-            f.write(response.text)
-    
-    return response.text
+    try:
+        response = model_instance.generate_content(
+            full_prompt, 
+            generation_config={
+                "temperature": temp,
+                "max_output_tokens": 2048
+            }
+        )
+        return response.text
+    except Exception as e:
+        return f"Error generating response: {str(e)}"
 
-# Generate response
-if query and corpus_chunks and api_key:
-    with st.spinner("🔍 Analyzing documents and generating a detailed response..."):
-        max_tokens = 8192  # Fixed maximum output length
-        response = query_gemini_rag(
-            query, 
-            corpus_chunks, 
-            api_key, 
-            model_option,
-            temperature, 
-            top_p, 
-            max_tokens,
-            language,
-            analysis_mode
-        )
-        
-        # Create downloadable response
-        response_download = BytesIO()
-        response_download.write(response.encode())
-        response_download.seek(0)
-        
-        st.subheader("💡 AI Response:")
-        st.write(response)
-        
-        st.download_button(
-            label="Download Response",
-            data=response_download,
-            file_name=f"quantum_docs_response_{time.strftime('%Y%m%d-%H%M%S')}.txt",
-            mime="text/plain"
-        )
+# Chat input with "up arrow" functionality 
+# (Streamlit doesn't support JS for keyboard shortcuts directly, but we'll add a placeholder)
+user_input = st.chat_input("Type your message...")
+
+if user_input:
+    # Add user message to chat
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    st.chat_message("user").write(user_input)
+    
+    # Generate AI response
+    with st.spinner("Thinking..."):
+        response = generate_response(user_input, api_key, model_option, temperature)
+    
+    # Add AI response to chat
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.chat_message("assistant").write(response)
+
+# Add a note about features
+st.caption("""
+💡 **Tips**: 
+- Use the sidebar to upload files and add them to the chat
+- The "➕ Add Files" button adds uploaded files to the conversation
+- Chat history is maintained within the session
+""")
